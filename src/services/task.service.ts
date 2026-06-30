@@ -52,3 +52,17 @@ export async function remove(id: number) {
     where: { id },
   });
 }
+
+
+
+
+
+// sonar-scanner \
+// -Dsonar.host.url=https://sonarqube.cicd.kits.ext.educentre.fr \-Dsonar.token=
+
+
+// sonar-scanner \
+// -Dsonar.host.url=https://sonarqube.cicd.kits.ext.educentre.fr \
+// -Dsonar.token=squ_86d8ff9b947dbe687dc9896ca84a60fda177082c
+
+// sonar-scanner -Dsonar.token=squ_86d8ff9b947dbe687dc9896ca84a60fda177082c
