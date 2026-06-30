@@ -88,14 +88,13 @@ pipeline {
         stage('9. Scan de sécurité & Rapports (Trivy)') {
             steps {
                 echo 'Scan Trivy et génération du rapport...'
-                // Génération d'un rapport au format texte/table pour les logs et archivage
+                // 1. Génération du rapport texte (redirection >) pour l'archivage final
                 sh "trivy image --severity HIGH,CRITICAL ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} > trivy-report.txt"
                 
-                // CONTRAINTE : Bloquer la pipeline si des failles HIGH ou CRITICAL sont trouvées (--exit-code 1)
+                // 2. CONTRAINTE TP : Bloquer le pipeline si des failles HIGH ou CRITICAL sont trouvées (--exit-code 1)
                 sh "trivy image --severity HIGH,CRITICAL --exit-code 1 ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
-
         stage('10. Génération d’une SBOM') {
             steps {
                 echo 'Génération de la SBOM avec Syft...'
