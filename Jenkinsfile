@@ -2,98 +2,112 @@ pipeline {
     agent any
 
     environment {
-        // Variables modifiables selon votre configuration
-        REGISTRY_USER    = 'ndongmo' // Votre utilisateur Docker Hub
-        IMAGE_NAME       = 'cicd-tasklist-backend'
-        IMAGE_TAG        = "${BUILD_NUMBER}" // Utilise le numéro de build Jenkins comme tag
-        SONAR_PROJECT_KEY= 'wilfrid-tasklist-backend'
+        // Configuration des variables selon vos contraintes
+        REGISTRY_USER       = 'ndongmo' // Votre nom d'utilisateur Docker Hub
+        IMAGE_NAME          = 'cicd-tasklist-backend'
+        IMAGE_TAG           = "${BUILD_NUMBER}" // Tag avec le numéro de build Jenkins
+        SONAR_PROJECT_KEY   = 'cicd-tasklist-backend'
+        
+        // Identifiants Jenkins demandés par le sujet
+        DOCKER_CRED_ID      = 'wilfrid-dockerhub-password'
+        SONAR_CRED_ID       = 'wilfrid-sonar-token'
     }
 
     stages {
-        stage('1. Installation des Dépendances') {
+        stage('1. Installation des dépendances') {
             steps {
-                echo 'Installation des dépendances npm...'
-                sh 'npm install'
+                echo 'Installation propre des dépendances...'
+                sh 'npm ci' // Utilisation stricte de npm ci comme demandé
             }
         }
 
-        stage('2. Génération du Client Prisma') {
+        stage('2. Génération du client Prisma') {
             steps {
                 echo 'Génération du client Prisma...'
                 sh 'npx prisma generate'
             }
         }
 
-        stage('3. Tests Unitaires') {
+        stage('3. Exécution des tests unitaires') {
             steps {
                 echo 'Exécution des tests unitaires...'
-                sh 'npm run test' 
-                // Note: Ajustez la commande si votre package.json utilise un autre script (ex: npm run test:unit)
+                // On s'assure de générer un rapport (souvent au format JUnit/XUnit)
+                sh 'npm run test -- --watchAll=false' 
             }
         }
 
-        stage('4. Tests End-to-End (E2E)') {
+        stage('4. Publication des rapports de tests') {
             steps {
-                echo 'Exécution des tests end-to-end...'
+                echo 'Publication des rapports de tests dans Jenkins...'
+                // Analyse et affiche les résultats des tests dans l'interface Jenkins
+                // Ajustez le chemin 'junit.xml' ou 'reports/*.xml' selon la config de votre projet
+                junit allowEmptyResults: true, testResults: '**/junit.xml'
+            }
+        }
+
+        stage('5. Exécution des tests end-to-end') {
+            steps {
+                echo 'Exécution des tests E2E...'
                 sh 'npm run test:e2e'
             }
         }
 
-        stage('5. Analyse SonarQube') {
+        stage('6. Analyse SonarQube') {
             steps {
                 echo 'Lancement de l\'analyse SonarQube...'
-                // Utilise le scanner configuré globalement dans Jenkins nommé 'SonarQubeScanner'
-                withSonarQubeEnv('SonarQubeScanner') {
-                    sh "sonar-scanner -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=."
+                // On utilise le token secret stocké de manière sécurisée dans Jenkins
+                withCredentials([string(credentialsId: "${SONAR_CRED_ID}", variable: 'SONAR_TOKEN')]) {
+                    // Utilise l'installation globale de votre serveur SonarQube
+                    withSonarQubeEnv('SonarQubeScanner') {
+                        sh "sonar-scanner -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=. -Dsonar.login=${SONAR_TOKEN}"
+                    }
                 }
             }
         }
 
-        stage('6. Vérification Quality Gate') {
+        stage('7. Vérification de la Quality Gate') {
             steps {
-                echo 'Vérification de la Quality Gate SonarQube...'
+                echo 'Vérification de la Quality Gate...'
                 timeout(time: 5, unit: 'MINUTES') {
-                    // Attend le retour de SonarQube pour bloquer le build en cas d'échec
+                    // Bloque la pipeline si la Quality Gate SonarQube échoue
                     waitForQualityGate abortPipeline: true
                 }
             }
         }
 
-        stage('7. Build de l\'image Docker') {
+        stage('8. Construction de l\'image Docker') {
             steps {
-                echo 'Construction de l\'image Docker...'
+                echo "Construction de l'image Docker taguée #${IMAGE_TAG}..."
                 sh "docker build -t ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} ."
-                // Crée aussi un tag 'latest' pour plus de commodité
-                sh "docker tag ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY_USER}/${IMAGE_NAME}"
+                sh "docker tag ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY_USER}/${IMAGE_NAME}:latest"
             }
         }
 
-        stage('8. Scan de l\'image avec Trivy') {
+        stage('9. Scan de sécurité & Rapports (Trivy)') {
             steps {
-                echo 'Scan de sécurité de l\'image Docker avec Trivy...'
-                // --exit-code 0 permet de ne pas faire échouer le build tout de suite, mettez 1 si vous voulez bloquer en cas de faille critique
-                sh "trivy image --severity HIGH,CRITICAL --exit-code 0 ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
+                echo 'Scan Trivy et génération du rapport...'
+                // Génération d'un rapport au format texte/table pour les logs et archivage
+                sh "trivy image --severity HIGH,CRITICAL ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} > trivy-report.txt"
+                
+                // CONTRAINTE : Bloquer la pipeline si des failles HIGH ou CRITICAL sont trouvées (--exit-code 1)
+                sh "trivy image --severity HIGH,CRITICAL --exit-code 1 ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
 
-        stage('9. Génération de la SBOM') {
+        stage('10. Génération d’une SBOM') {
             steps {
-                echo 'Génération de la Software Bill of Materials (SBOM) avec Syft...'
-                // Génère un fichier au format SPDX JSON par exemple
+                echo 'Génération de la SBOM avec Syft...'
                 sh "syft ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} -o spdx-json=sbom.json"
-                // Archive le fichier dans Jenkins pour pouvoir le télécharger après le build
-                archiveArtifacts artifacts: 'sbom.json', allowEmptyArchive: false
             }
         }
 
-        stage('10. Publication sur Docker Hub') {
+        stage('11. Publication de l\'image Docker') {
             steps {
-                echo 'Connexion et publication de l\'image sur Docker Hub...'
-                // 'docker-hub-credentials' doit correspondre à l'ID de vos identifiants (Username/Password) configurés dans Jenkins
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                echo 'Connexion et push sur Docker Hub...'
+                withCredentials([usernamePassword(credentialsId: "${DOCKER_CRED_ID}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
                     sh "docker push ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
-                    sh "docker push ${REGISTRY_USER}/${IMAGE_NAME}"
+                    sh "docker push ${REGISTRY_USER}/${IMAGE_NAME}:latest"
                 }
             }
         }
@@ -101,15 +115,23 @@ pipeline {
 
     post {
         always {
-            echo 'Nettoyage des images Docker locales pour libérer de l\'espace...'
+            echo 'Archivage des rapports (Trivy et SBOM)...'
+            // Archive les fichiers pour qu'ils soient téléchargeables dans Jenkins
+            archiveArtifacts artifacts: 'trivy-report.txt, sbom.json', allowEmptyArchive: true
+
+            echo 'Nettoyage du workspace et des images Docker locales...'
+            // Supprime les images locales créées pour éviter de saturer le serveur Jenkins
             sh "docker rmi ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} || true"
-            sh "docker rmi ${REGISTRY_USER}/${IMAGE_NAME} || true"
+            sh "docker rmi ${REGISTRY_USER}/${IMAGE_NAME}:latest || true"
+            
+            // Nettoie complètement le dossier de travail Jenkins
+            cleanWs()
         }
         success {
-            echo 'Pipeline exécutée avec succès ! Code validé, image scannée et publiée.'
+            echo 'Félicitations Wilfrid ! Pipeline exécutée avec succès.'
         }
         failure {
-            echo 'La pipeline a échoué. Vérifiez les logs des étapes ci-dessus.'
+            echo 'Le build a échoué. Vérifiez les étapes ci-dessus.'
         }
     }
 }
