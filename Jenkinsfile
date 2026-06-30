@@ -58,7 +58,7 @@ pipeline {
                 // On utilise le token secret stocké de manière sécurisée dans Jenkins
                 withCredentials([string(credentialsId: "${SONAR_CRED_ID}", variable: 'SONAR_TOKEN')]) {
                     // Utilise l'installation globale de votre serveur SonarQube
-                    withSonarQubeEnv('SonarQubeScanner') {
+                    withSonarQubeEnv('sonarqube') {
                         sh "sonar-scanner -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=. -Dsonar.login=${SONAR_TOKEN}"
                     }
                 }
