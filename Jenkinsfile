@@ -64,7 +64,7 @@ pipeline {
                 echo 'Construction de l\'image Docker...'
                 sh "docker build -t ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} ."
                 // Crée aussi un tag 'latest' pour plus de commodité
-                sh "docker tag ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY_USER}/${IMAGE_NAME}:latest"
+                sh "docker tag ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY_USER}/${IMAGE_NAME}"
             }
         }
 
@@ -93,7 +93,7 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh "echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin"
                     sh "docker push ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
-                    sh "docker push ${REGISTRY_USER}/${IMAGE_NAME}:latest"
+                    sh "docker push ${REGISTRY_USER}/${IMAGE_NAME}"
                 }
             }
         }
@@ -103,7 +103,7 @@ pipeline {
         always {
             echo 'Nettoyage des images Docker locales pour libérer de l\'espace...'
             sh "docker rmi ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} || true"
-            sh "docker rmi ${REGISTRY_USER}/${IMAGE_NAME}:latest || true"
+            sh "docker rmi ${REGISTRY_USER}/${IMAGE_NAME} || true"
         }
         success {
             echo 'Pipeline exécutée avec succès ! Code validé, image scannée et publiée.'
