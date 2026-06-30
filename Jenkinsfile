@@ -31,8 +31,8 @@ pipeline {
         stage('3. Exécution des tests unitaires') {
             steps {
                 echo 'Exécution des tests unitaires...'
-                // On s'assure de générer un rapport (souvent au format JUnit/XUnit)
-                sh 'npm run test -- --watchAll=false' 
+                // On retire le -- --watchAll=false inutile pour Vitest
+                sh 'npm run test' 
             }
         }
 
