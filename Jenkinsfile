@@ -95,11 +95,14 @@ pipeline {
                 sh "trivy image --severity CRITICAL --exit-code 1 ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
-        
+
         stage('10. Génération d’une SBOM') {
             steps {
-                echo 'Génération de la SBOM avec Syft...'
-                sh "syft ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} -o spdx-json=sbom.json"
+                echo 'Génération de la SBOM avec Syft (Exécution à la volée)...'
+                // Utilise le script d'installation officiel de Anchore pour exécuter syft sans installation globale
+                sh "curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b ."
+                // On exécute maintenant le binaire localisé dans le dossier courant (./syft)
+                sh "./syft ${REGISTRY_USER}/${IMAGE_NAME}:${IMAGE_TAG} -o spdx-json=sbom.json"
             }
         }
 
