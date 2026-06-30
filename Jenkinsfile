@@ -39,9 +39,8 @@ pipeline {
         stage('4. Publication des rapports de tests') {
             steps {
                 echo 'Publication des rapports de tests dans Jenkins...'
-                // Analyse et affiche les résultats des tests dans l'interface Jenkins
-                // Ajustez le chemin 'junit.xml' ou 'reports/*.xml' selon la config de votre projet
-                junit allowEmptyResults: true, testResults: '**/junit.xml'
+                // On cible précisément le dossier généré par Vitest
+                junit allowEmptyResults: true, testResults: 'reports/junit.xml'
             }
         }
 
@@ -55,11 +54,17 @@ pipeline {
         stage('6. Analyse SonarQube') {
             steps {
                 echo 'Lancement de l\'analyse SonarQube...'
-                // On utilise le token secret stocké de manière sécurisée dans Jenkins
+                // 1. On masque et injecte proprement le token sans interpolation Groovy risquée
                 withCredentials([string(credentialsId: "${SONAR_CRED_ID}", variable: 'SONAR_TOKEN')]) {
-                    // Utilise l'installation globale de votre serveur SonarQube
-                    withSonarQubeEnv('sonarqube') {
-                        sh "sonar-scanner -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=. -Dsonar.login=${SONAR_TOKEN}"
+                    // 2. On appelle l'environnement SonarQube
+                    withSonarQubeEnv('SonarQube') { 
+                        // 3. On demande à Jenkins d'injecter automatiquement le chemin vers l'outil "SonarQubeScanner"
+                        script {
+                            def scannerHome = tool 'SonarQubeScanner'
+                            // On utilise le chemin absolu de l'outil trouvé (${scannerHome}/bin/sonar-scanner)
+                            // Et on passe $SONAR_TOKEN comme variable d'environnement pure pour la sécurité
+                            sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=. -Dsonar.login=\$SONAR_TOKEN"
+                        }
                     }
                 }
             }
