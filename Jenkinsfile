@@ -53,12 +53,17 @@ pipeline {
 
         stage('6. Analyse SonarQube') {
             steps {
-                echo 'Lancement de l\'analyse SonarQube autonome via npx...'
+                echo 'Lancement de l\'analyse SonarQube avec injection d\'URL...'
                 withCredentials([string(credentialsId: "${SONAR_CRED_ID}", variable: 'SONAR_TOKEN')]) {
-                    // On n'utilise plus 'withSonarQubeEnv' car le serveur Jenkins n'a pas de nom valide.
-                    // On passe l'URL par défaut (http://localhost:9000). 
-                    // SI l'URL de votre école est différente, remplacez http://localhost:9000 ci-dessous.
-                    sh "npx sonarqube-scanner -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.login=\$SONAR_TOKEN"
+                    script {
+                        // On force l'injection des variables d'environnement SonarQube (génère SONAR_HOST_URL)
+                        // On intercepte l'erreur d'absence de nom mais on récupère quand même les variables système
+                        withSonarQubeEnv() {
+                            // On utilise $SONAR_HOST_URL fourni par Jenkins au lieu de localhost
+                            // On remplace également -Dsonar.login par -Dsonar.token pour corriger le Warning de dépréciation
+                            sh "npx sonarqube-scanner -Dsonar.projectKey=${SONAR_PROJECT_KEY} -Dsonar.sources=. -Dsonar.host.url=\$SONAR_HOST_URL -Dsonar.token=\$SONAR_TOKEN"
+                        }
+                    }
                 }
             }
         }
